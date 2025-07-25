@@ -28,6 +28,7 @@ def update_frame():
     if running and cap is not None:
         ret, frame = cap.read()
         if not ret:
+            status_label.config(text="❌ Не удалось получить кадр", fg="orange")
             return
 
         frame = cv2.flip(frame, 1)
@@ -50,9 +51,15 @@ def start_camera():
     global cap, running
     if not running:
         cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            status_label.config(text="❌ Камера не найдена", fg="gray")
+            cap.release()
+            cap = None
+            return
+
         running = True
-        update_frame()
         status_label.config(text="Камера запущена", fg="black")
+        update_frame()
 
 def stop_camera():
     global cap, running
