@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TVELVision — Камера</title>
+  <link href="/static/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 20px; }
+    #video { border: 1px solid #ddd; border-radius: 4px; }
+    #result { margin-top: 10px; font-weight: 600; }
+    .status-ok { color: green; }
+    .status-bad { color: red; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3>Проверка таблеток через камеру</h3>
+    <div class="row">
+      <div class="col-md-6">
+        <video id="video" width="400" height="300" autoplay></video>
+        <div class="mt-2">
+          <button id="btn-start" class="btn btn-primary btn-sm">Старт</button>
+          <button id="btn-stop" class="btn btn-secondary btn-sm">Стоп</button>
+          <button id="btn-snap" class="btn btn-success btn-sm">Сделать фото</button>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div id="result" class="alert alert-light">Ожидание камеры...</div>
+        <div id="last-img"></div>
+      </div>
+    </div>
+    <hr>
+    <h5>Загрузить файл</h5>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" name="file" accept="image/*" />
+      <button class="btn btn-outline-primary btn-sm" type="submit">Загрузить</button>
+    </form>
+    <div id="uploadResult" class="mt-2"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const btnStart = document.getElementById('btn-start');
+    const btnStop = document.getElementById('btn-stop');
+    const btnSnap = document.getElementById('btn-snap');
+    const resultBox = document.getElementById('result');
+    const lastImg = document.getElementById('last-img');
+    let stream = null;
+    let polling = false;
+    let intervalId = null;
+    const INTERVAL_MS = 700; // отправлять кадр каждые 700ms
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        resultBox.innerText = "Камера включена. Ожидание анализа...";
+        startPolling();
+      } catch (e) {
+        resultBox.innerText = "Ошибка доступа к камере: " + e;
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      resultBox.innerText = "Камера остановлена.";
+      stopPolling();
+    }
+
+    function takeSnapshot() {
+      if (!stream) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      sendFrame(dataUrl);
+    }
+
+    async function sendFrame(dataUrl) {
+      try {
+        const form = new FormData();
+        form.append('image_data', dataUrl);
+        const res = await fetch('/detect', { method: 'POST', body: form });
+        const json = await res.json();
+        if (json.error) {
+          resultBox.innerText = "Ошибка: " + json.error;
+          resultBox.className = "alert alert-danger";
+        } else {
+          const prob = (json.probability * 100).toFixed(1);
+          if (json.detected) {
+            resultBox.innerText = `Таблетка обнаружена — ${prob}%`;
+            resultBox.className = "alert alert-success";
+          } else {
+            resultBox.innerText = `Таблетка НЕ обнаружена — ${prob}%`;
+            resultBox.className = "alert alert-warning";
+          }
+          lastImg.innerHTML = `<img src="${dataUrl}" width="200" class="img-thumbnail" /> <div class="small text-muted">saved: ${json.saved_path ? json.saved_path.split('/').pop() : ''}</div>`;
+        }
+      } catch (e) {
+        resultBox.innerText = "Ошибка отправки кадра: " + e;
+        resultBox.className = "alert alert-danger";
+      }
+    }
+
+    function startPolling() {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        if (video.srcObject) {
+          // делаем маленький canvas и отправляем
+          const canvas = document.createElement('canvas');
+          canvas.width = 64; canvas.height = 64;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg');
+          sendFrame(dataUrl);
+        }
+      }, INTERVAL_MS);
+    }
+
+    function stopPolling() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+
+    btnStart.addEventListener('click', startCamera);
+    btnStop.addEventListener('click', stopCamera);
+    btnSnap.addEventListener('click', takeSnapshot);
+
+    // upload form
+    const uploadForm = document.getElementById('uploadForm');
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = uploadForm.querySelector('input[type=file]');
+      if (!fileInput.files.length) return alert('Выберите файл');
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      const res = await fetch('/upload-file', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.error) {
+        document.getElementById('uploadResult').innerText = 'Ошибка: ' + json.error;
+      } else {
+        document.getElementById('uploadResult').innerText = `Результат: ${json.detected ? 'Таблетка' : 'Не таблетка'} (${(json.probability*100).toFixed(1)}%), saved: ${json.saved_path.split('/').pop()}`;
+      }
+    });
+  </script>
+</body>
+</html>
