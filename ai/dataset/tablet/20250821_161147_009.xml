@@ -1,0 +1,26 @@
+<annotation>
+	<folder>tablet</folder>
+	<filename>20250821_161147_009.jpg</filename>
+	<path>E:\Code\TVELVision\ai\dataset\tablet\20250821_161147_009.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2576</width>
+		<height>1932</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>tablet</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>1267</xmin>
+			<ymin>584</ymin>
+			<xmax>1673</xmax>
+			<ymax>1232</ymax>
+		</bndbox>
+	</object>
+</annotation>
