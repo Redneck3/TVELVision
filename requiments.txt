@@ -1,14 +1,3 @@
-tensorflow
-tf-models-official
-protobuf
+ultralytics
+PySide6
 opencv-python
-matplotlib
-pillow
-lxml
-Cython
-contextlib2
-pyyaml
-six
-pandas
-scipy
-

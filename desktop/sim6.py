@@ -1,5 +1,6 @@
 import sys
 import random
+import platform
 import cv2
 import os
 from datetime import datetime
@@ -161,7 +162,7 @@ class QualityControlGUI(QMainWindow):
         self.cap = None
         self.cam_timer = QTimer()
         self.cam_timer.timeout.connect(self.update_camera_frame)
-        self.camera_index = 0  # если нужно, поменяешь на другую камеру
+        self.camera_index = 2 # если нужно, поменяешь на другую камеру
 
         # Центральный виджет и вкладки
         self.central_widget = QWidget()
@@ -200,20 +201,25 @@ class QualityControlGUI(QMainWindow):
     ### CAMERA: инициализация камеры
     def init_camera(self):
         try:
-            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)  # CAP_DSHOW для Windows ускоряет старт
+            if platform.system() == "Windows":
+                self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+            else:
+                # Для Linux / macOS
+                self.cap = cv2.VideoCapture(self.camera_index)
+
             if not self.cap.isOpened():
                 self.cam_image.setText("❌ Камера недоступна")
                 self.cam_image.setAlignment(Qt.AlignCenter)
                 return
-            # Настройки (по желанию)
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1600)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 900)
-            self.cap.set(cv2.CAP_PROP_FPS, 30)
 
-            self.cam_timer.start(30)  # ~33 кадра/с
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 800)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
+            self.cap.set(cv2.CAP_PROP_FPS, 25)
+
+            self.cam_timer.start(30)
+
         except Exception as e:
             self.cam_image.setText(f"Ошибка запуска камеры: {e}")
-
     ### CAMERA: обновление кадра
     def update_camera_frame(self):
         if not self.cap:
