@@ -1,0 +1,26 @@
+<annotation>
+	<folder>val</folder>
+	<filename>20250826_163119_030.jpg</filename>
+	<path>E:\Code\TVELVision\dataset\images\val\20250826_163119_030.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2576</width>
+		<height>1932</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>tablet</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>874</xmin>
+			<ymin>326</ymin>
+			<xmax>1590</xmax>
+			<ymax>1106</ymax>
+		</bndbox>
+	</object>
+</annotation>

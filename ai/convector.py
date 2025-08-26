@@ -2,9 +2,9 @@ import os
 import glob
 import xml.etree.ElementTree as ET
 
-annotations_dir = "./ai/dataset/training"
-images_dir = "./ai/dataset/training"
-labels_output_dir = "./ai/dataset/training/labels"
+annotations_dir = "./ai/dataset/val"
+images_dir = "./ai/dataset/val"
+labels_output_dir = "./ai/dataset/labels/val"
 
 os.makedirs(labels_output_dir, exist_ok=True)
 

@@ -162,7 +162,7 @@ class QualityControlGUI(QMainWindow):
         self.cap = None
         self.cam_timer = QTimer()
         self.cam_timer.timeout.connect(self.update_camera_frame)
-        self.camera_index = 2 # если нужно, поменяешь на другую камеру
+        self.camera_index = 0 # если нужно, поменяешь на другую камеру
 
         # Центральный виджет и вкладки
         self.central_widget = QWidget()
@@ -204,7 +204,7 @@ class QualityControlGUI(QMainWindow):
             if platform.system() == "Windows":
                 self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
             else:
-                # Для Linux / macOS
+                # Для Linux
                 self.cap = cv2.VideoCapture(self.camera_index)
 
             if not self.cap.isOpened():
