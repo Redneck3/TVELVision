@@ -1,6 +1,7 @@
 import sys
 import random
 import platform
+from PIL import Image, ImageTk
 import cv2
 import os
 from datetime import datetime
@@ -19,14 +20,15 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import (
     Qt, QTimer, QRectF, QObject, Signal, QPointF, 
-    QVariantAnimation, QEasingCurve, QSize
+    QVariantAnimation, QEasingCurve, QSize, QThread
 )
+from ultralytics import YOLO
 
 class QualityControlGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Система контроля качества таблеток")
-        self.setGeometry(100, 100, 1600, 900)
+        self.setGeometry(100, 100, 1200, 900)
         
         # Цветовая схема
         self.setStyleSheet("""
@@ -162,7 +164,7 @@ class QualityControlGUI(QMainWindow):
         self.cap = None
         self.cam_timer = QTimer()
         self.cam_timer.timeout.connect(self.update_camera_frame)
-        self.camera_index = 0 # если нужно, поменяешь на другую камеру
+        self.camera_index = 2 # если нужно, поменяешь на другую камеру
 
         # Центральный виджет и вкладки
         self.central_widget = QWidget()
@@ -189,10 +191,11 @@ class QualityControlGUI(QMainWindow):
         self.setup_quality_tab()
         self.setup_history_tab()
         self.setup_settings_tab()
+    
+        # YOLO
+        model_path="./runs/detect/train3/weights/best.pt"
+        self.model = YOLO(model_path)
 
-        ### CAMERA: автозапуск камеры после создания UI
-        QTimer.singleShot(0, self.init_camera)
-        
         # Таймер для обновления данных конвейера/статистики
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_data)
@@ -214,36 +217,43 @@ class QualityControlGUI(QMainWindow):
 
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 800)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
-            self.cap.set(cv2.CAP_PROP_FPS, 25)
+            self.cap.set(cv2.CAP_PROP_FPS, 60)
 
             self.cam_timer.start(30)
+            
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
 
         except Exception as e:
             self.cam_image.setText(f"Ошибка запуска камеры: {e}")
+            
     ### CAMERA: обновление кадра
     def update_camera_frame(self):
         if not self.cap:
             return
         ok, frame = self.cap.read()
         if not ok or frame is None:
-            # иногда камера «просыпается» пару тактов
             return
-        # Переворот/преобразование BGR->RGB
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Подгоним размер под QLabel, сохранив пропорции
+        # Запускаем YOLO
+        results = self.model(frame, imgsz=640, conf=0.085)
+
+        # Используем встроенный метод YOLO для рисования боксов
+        annotated_frame = results[0].plot()
+
+        # --- показываем в QLabel ---
+        rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         bytes_per_line = ch * w
-        qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
         pix = QPixmap.fromImage(qimg)
 
-        # Масштаб к размеру виджета (cover/contain — выберем contain)
         target = self.cam_image.size()
         if target.width() > 0 and target.height() > 0:
             pix = pix.scaled(target, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
         self.cam_image.setPixmap(pix)
+
 
     ### CAMERA: остановка и освобождение
     def close_camera(self):
@@ -261,10 +271,12 @@ class QualityControlGUI(QMainWindow):
         self.close_camera()
         super().closeEvent(event)
 
+    
     def setup_quality_tab(self):
         layout = QVBoxLayout()
         layout.setSpacing(15)
         layout.setContentsMargins(15, 15, 15, 15)
+        
         
         # Верхняя часть: камеры и конвейер
         top_layout = QHBoxLayout()
@@ -276,7 +288,7 @@ class QualityControlGUI(QMainWindow):
         # Единая область для видеопотока
         cam_frame = QFrame()
         cam_frame.setFrameShape(QFrame.StyledPanel)
-        cam_frame.setMinimumSize(400, 300)
+        cam_frame.setMinimumSize(200, 100)
         
         # Градиентный фон
         cam_frame.setStyleSheet(f"""
@@ -287,6 +299,7 @@ class QualityControlGUI(QMainWindow):
         
         cam_layout = QVBoxLayout(cam_frame)
         
+        
         # Изображение камеры
         self.cam_image = QLabel()
         self.cam_image.setAlignment(Qt.AlignCenter)
@@ -296,7 +309,7 @@ class QualityControlGUI(QMainWindow):
             border-radius: 4px;
             border: 1px dashed #8aaeb3;
         """)
-        self.cam_image.setText("Запуск камеры…")
+        self.cam_image.setText("Ожидания запуска программы, нажмите СТАРТ")
         
         cam_layout.addWidget(self.cam_image)
         cameras_layout.addWidget(cam_frame)
@@ -320,6 +333,9 @@ class QualityControlGUI(QMainWindow):
         self.start_btn = QPushButton("▶ СТАРТ")
         self.stop_btn = QPushButton("⏹ СТОП")
         self.save_btn = QPushButton("💾 СОХРАНИТЬ КАДРЫ")
+        
+        self.start_btn.clicked.connect(self.init_camera)
+        self.stop_btn.clicked.connect(self.close_camera)
         
         # Стили кнопок
         self.start_btn.setStyleSheet("background-color: #a5d6a7; color: #2c3e50;")
@@ -866,8 +882,8 @@ class ConveyorVisualizer(QGraphicsView):
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.setFixedHeight(500)
-        self.setMinimumWidth(800)
+        self.setFixedHeight(400)
+        self.setMinimumWidth(150)
         self.setRenderHint(QPainter.Antialiasing)
         self.positions = []
         self.max_positions = 10
@@ -904,7 +920,7 @@ class ConveyorVisualizer(QGraphicsView):
         self.scene.addPath(self.conveyor_path4, QPen(QColor("#4a4238"), 4))
 
         # Зона контроля (в центре)
-        self.control_zone = QGraphicsRectItem(350, 110, 100, 350)
+        self.control_zone = QGraphicsRectItem(350, 90, 100, 350)
         self.control_zone.setBrush(QBrush(QColor(100, 181, 246, 100)))
         self.control_zone.setPen(QPen(QColor(33, 150, 243), 2, Qt.DashLine))
         self.scene.addItem(self.control_zone)
@@ -940,14 +956,14 @@ class ConveyorVisualizer(QGraphicsView):
         self.ok_counter.setPlainText(str(self.ok_count))
         
         # Корзина для бракованных деталей (справа снизу)
-        self.defect_bin = QGraphicsRectItem(550, 410, 120, 100)
+        self.defect_bin = QGraphicsRectItem(550, 350, 120, 100)
         self.defect_bin.setBrush(QBrush(QColor("#ef9a9a")))
         self.defect_bin.setPen(QPen(QColor("#d32f2f"), 2))
         self.scene.addItem(self.defect_bin)
         
         # Счётчик бракованных деталей внутри корзины
         self.defect_counter = self.scene.addText("0")
-        self.defect_counter.setPos(595, 435)
+        self.defect_counter.setPos(595, 375)
         self.defect_counter.setDefaultTextColor(QColor("#d32f2f"))
         font = self.defect_counter.font()
         font.setPointSize(20)

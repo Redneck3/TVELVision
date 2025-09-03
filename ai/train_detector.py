@@ -1,115 +1,128 @@
-import os
-import numpy as np
+import tkinter as tk
+from tkinter import ttk, filedialog
 import cv2
-from pathlib import Path
-from sklearn.model_selection import train_test_split
-from tf_keras.models import Sequential
-from tf_keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+import time
+from ultralytics import YOLO
+from PIL import Image, ImageTk
+import threading
 
-# === Параметры ===
-IMG_SIZE = 64
-DATASET_DIR = Path("E:/Code/TVELVision/ai/dataset")
-YOLO_LABELS_DIR = DATASET_DIR / "labels"
-YOLO_LABELS_DIR.mkdir(exist_ok=True, parents=True)
 
-def enhance_dataset_with_lighting_variations(manual_roi=True):
-    """Создание датасета с вариациями освещения и сохранением YOLO-разметки"""
-    data = []
-    labels = []
-    
-    for label, category in enumerate(["not_tablet", "tablet"]):
-        folder = DATASET_DIR / category
-        for file in os.listdir(folder):
-            if file.endswith(('.jpg', '.jpeg', '.png')):
-                img_path = str(folder / file)
-                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if img is None:
-                    continue
+class TabletDetectorApp:
+    def __init__(self, root, model_path):
+        self.root = root
+        self.root.title("Tablet Detector - YOLOv8")
+        self.root.geometry("900x700")
 
-                # --- Выбор ROI ---
-                if manual_roi:
-                    roi = cv2.selectROI(f"Выделите область для {category}", img, fromCenter=False, showCrosshair=True)
-                    if roi == (0, 0, 0, 0):  
-                        print(f"Пропущено: {img_path}")
-                        continue
-                    x, y, w, h = roi
-                    cropped = img[y:y+h, x:x+w]
+        # YOLO model
+        self.model = YOLO(model_path)
 
-                    # Сохраняем YOLO-аннотацию
-                    H, W = img.shape[:2]
-                    x_center = (x + w/2) / W
-                    y_center = (y + h/2) / H
-                    w_norm = w / W
-                    h_norm = h / H
-                    yolo_line = f"{label} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}"
+        # Camera
+        self.cap = None
+        self.running = False
 
-                    txt_path = YOLO_LABELS_DIR / (Path(file).stem + ".txt")
-                    with open(txt_path, "w") as f:
-                        f.write(yolo_line)
-                else:
-                    cropped = img  # берём всё изображение, если ROI не нужен
+        # Video / Image label
+        self.video_label = tk.Label(self.root)
+        self.video_label.pack(pady=10)
 
-                # --- Подготовка изображения ---
-                img_resized = cv2.resize(cropped, (IMG_SIZE, IMG_SIZE))
-                data.append(img_resized)
-                labels.append(label)
+        # Buttons
+        btn_frame = ttk.Frame(self.root)
+        btn_frame.pack(pady=10)
 
-                # --- Аугментации по освещению ---
-                for alpha in [0.6, 0.8, 1.0, 1.2, 1.4]:
-                    for beta in [-30, 0, 30]:
-                        adjusted = cv2.convertScaleAbs(img_resized, alpha=alpha, beta=beta)
-                        data.append(adjusted)
-                        labels.append(label)
+        self.start_btn = ttk.Button(btn_frame, text="Start Camera", command=self.start_detection)
+        self.start_btn.grid(row=0, column=0, padx=10)
 
-    cv2.destroyAllWindows()
-    return np.array(data).reshape(-1, IMG_SIZE, IMG_SIZE, 1) / 255.0, np.array(labels)
+        self.stop_btn = ttk.Button(btn_frame, text="Stop Camera", command=self.stop_detection, state=tk.DISABLED)
+        self.stop_btn.grid(row=0, column=1, padx=10)
 
-# === Создание датасета ===
-print("Создание датасета с вариациями освещения...")
-X, y = enhance_dataset_with_lighting_variations(manual_roi=True)
-print(f"Создано {len(X)} изображений")
+        self.load_btn = ttk.Button(btn_frame, text="Load Image", command=self.load_image)
+        self.load_btn.grid(row=0, column=2, padx=10)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        self.quit_btn = ttk.Button(btn_frame, text="Quit", command=self.quit_app)
+        self.quit_btn.grid(row=0, column=3, padx=10)
+        # FPS label
+        self.fps_label = ttk.Label(self.root, text="FPS: 0")
+        self.fps_label.pack()
 
-# === Модель CNN ===
-model = Sequential([
-    Conv2D(32, (3, 3), activation="relu", input_shape=(IMG_SIZE, IMG_SIZE, 1)),
-    MaxPooling2D(2, 2),
-    Dropout(0.25),
+    def start_detection(self):
+        if not self.running:
+            self.cap = cv2.VideoCapture(2)
+            if not self.cap.isOpened():
+                print("Камера не найдена")
+                return
+            self.running = True
+            self.start_btn.config(state=tk.DISABLED)
+            self.stop_btn.config(state=tk.NORMAL)
+            threading.Thread(target=self.update_frame, daemon=True).start()
 
-    Conv2D(64, (3, 3), activation="relu"),
-    MaxPooling2D(2, 2),
-    Dropout(0.25),
+    def stop_detection(self):
+        if self.running:
+            self.running = False
+            if self.cap:
+                self.cap.release()
+            self.start_btn.config(state=tk.NORMAL)
+            self.stop_btn.config(state=tk.DISABLED)
 
-    Flatten(),
-    Dense(128, activation="relu"),
-    Dropout(0.5),
-    Dense(1, activation="sigmoid")
-])
+    def quit_app(self):
+        self.stop_detection()
+        self.root.quit()
+        self.root.destroy()
 
-model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-model.summary()
+    def update_frame(self):
+        prev_time = 0
+        while self.running:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
 
-# === Обучение ===
-print("Начало обучения...")
-history = model.fit(
-    X_train, y_train,
-    batch_size=32,
-    epochs=20,
-    validation_data=(X_test, y_test),
-    verbose=1
-)
+            # YOLO detection
+            results = self.model(frame, imgsz=640, conf=0.1)
+            annotated_frame = results[0].plot()
 
-# === Сохранение модели ===
-APP_DIR = Path(__file__).parent
-save_path = APP_DIR / "ai" / "h5" / "tablet_detector_enhanced.keras"
-save_path.parent.mkdir(parents=True, exist_ok=True)
-model.save(save_path)
+            # FPS calculation
+            curr_time = time.time()
+            fps = 1 / (curr_time - prev_time) if prev_time > 0 else 0
+            prev_time = curr_time
+            self.fps_label.config(text=f"FPS: {int(fps)}")
 
-# === Оценка ===
-test_loss, test_acc = model.evaluate(X_test, y_test)
-print(f"Test Accuracy: {test_acc:.4f}")
-print(f"Test Loss: {test_loss:.4f}")
+            # Convert to ImageTk
+            img = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(img)
+            imgtk = ImageTk.PhotoImage(image=img)
 
-print("✅ Модель обучена и сохранена!")
-print(f"YOLO разметка сохранена в: {YOLO_LABELS_DIR}")
+            self.video_label.imgtk = imgtk
+            self.video_label.config(image=imgtk)
+
+        if self.cap:
+            self.cap.release()
+
+    def load_image(self):
+        """Загрузка фото и проверка YOLO"""
+        file_path = filedialog.askopenfilename(
+            title="Выберите изображение"
+        )
+        if not file_path:
+            return
+
+        img = cv2.imread(file_path)
+        if img is None:
+            print("Ошибка загрузки изображения")
+            return
+
+        # YOLO detection
+        results = self.model(img, imgsz=320, conf=0.1)
+        annotated_frame = results[0].plot()
+
+        # Convert to ImageTk
+        img = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(img)
+        imgtk = ImageTk.PhotoImage(image=img)
+
+        self.video_label.imgtk = imgtk
+        self.video_label.config(image=imgtk)
+        self.fps_label.config(text="Фото загружено")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TabletDetectorApp(root, model_path="./runs/detect/train3/weights/best.pt")
+    root.mainloop()

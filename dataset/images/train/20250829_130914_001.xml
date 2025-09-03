@@ -1,0 +1,26 @@
+<annotation>
+	<folder>Tablet</folder>
+	<filename>20250829_130914_001.jpg</filename>
+	<path>Z:\home\amalkov\Изображения\Tablet\20250829_130914_001.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>2576</width>
+		<height>1932</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>tablet</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>1258</xmin>
+			<ymin>815</ymin>
+			<xmax>1376</xmax>
+			<ymax>993</ymax>
+		</bndbox>
+	</object>
+</annotation>

@@ -1,0 +1,1 @@
+yolo detect train data=dataset/data.yaml model=yolov8n.pt epochs=30 imgsz=320
