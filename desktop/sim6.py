@@ -133,8 +133,9 @@ class QualityControlGUI(QMainWindow):
         """)
         
         # Папка для сохранения изображений брака
-        ##self.defect_folder = "defect_images"
-        ####    os.makedirs(self.defect_folder)
+        self.defect_folder = "defect_images"
+        if not os.path.exists(self.defect_folder):
+            os.makedirs(self.defect_folder)
         
         # Инициализация переменных
         self.current_part = 0
@@ -147,7 +148,7 @@ class QualityControlGUI(QMainWindow):
         self.auto_next_batch = False
         self.spawn_timer = QTimer()
         self.spawn_timer.timeout.connect(self.spawn_part)
-        self.spawn_interval = 3100  # Интервал спавна деталей
+        self.spawn_interval = 800  # Интервал спавна деталей
         
         # Статистика по дефектам поверхности (накапливается)
         self.total_scratches = 0
@@ -198,7 +199,7 @@ class QualityControlGUI(QMainWindow):
         # Таймер для обновления данных конвейера/статистики
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_data)
-        self.timer.start(100)  # Частое обновление для плавной анимации
+        self.timer.start(30)  # Частое обновление для плавной анимации
 
     ### CAMERA: инициализация камеры
     def init_camera(self):
@@ -216,11 +217,12 @@ class QualityControlGUI(QMainWindow):
 
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 800)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
-            self.cap.set(cv2.CAP_PROP_FPS, 25)
+            self.cap.set(cv2.CAP_PROP_FPS, 60)
 
-            self.cam_timer.start(10)
+            self.cam_timer.start(30)
             
-
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
 
         except Exception as e:
             self.cam_image.setText(f"Ошибка запуска камеры: {e}")
@@ -235,7 +237,7 @@ class QualityControlGUI(QMainWindow):
 
         # Запускаем YOLO
         results = self.model(frame, imgsz=640, conf=0.085)
-        
+
         # Используем встроенный метод YOLO для рисования боксов
         annotated_frame = results[0].plot()
 
@@ -251,6 +253,7 @@ class QualityControlGUI(QMainWindow):
             pix = pix.scaled(target, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
         self.cam_image.setPixmap(pix)
+
 
     ### CAMERA: остановка и освобождение
     def close_camera(self):
@@ -669,7 +672,7 @@ class QualityControlGUI(QMainWindow):
             self.spawn_timer.start(self.spawn_interval)
             self.start_time = datetime.now()
             if self.auto_next_batch:
-                QTimer.singleShot(200, lambda: self.spawn_timer.start(self.spawn_interval))
+                QTimer.singleShot(100, lambda: self.spawn_timer.start(self.spawn_interval))
 
     def stop_processing(self):
         if self.is_running:
@@ -880,10 +883,10 @@ class ConveyorVisualizer(QGraphicsView):
         self.setScene(self.scene)
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.setFixedHeight(400)
-        self.setMinimumWidth(600)
+        self.setMinimumWidth(150)
         self.setRenderHint(QPainter.Antialiasing)
         self.positions = []
-        self.max_positions = 15
+        self.max_positions = 10
         
         # Счётчики для корзин (общие, сохраняются между партиями)
         self.ok_count = 0
@@ -979,7 +982,7 @@ class ConveyorVisualizer(QGraphicsView):
     def spawn_new_part(self):
         if len(self.positions) < self.max_positions:
             # Стартовая позиция - слева
-            start_x = -10
+            start_x = -50
             new_pos = {
                 "x": start_x,
                 "y": 138,
