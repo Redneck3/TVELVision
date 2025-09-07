@@ -1,3 +1,6 @@
-ultralytics
 PySide6
 opencv-python
+ultralytics==8.0.196"
+pydantic<2
+typing-extensions<4.6
+numpy==1.26.4
